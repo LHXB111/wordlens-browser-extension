@@ -38,6 +38,11 @@ try {
     if (url.startsWith("http://127.0.0.1:8765/v1/")) {
       if (globalThis.__testFail) return new Response("test secret", { status: 401 });
       const data = JSON.parse(init.body); const selected = JSON.parse(data.messages[1].content).selectedText;
+      if (globalThis.__testHold) {
+        globalThis.__testHold = false;
+        await new Promise(resolveResponse => { globalThis.__testRelease = resolveResponse; });
+        globalThis.__testRelease = null;
+      }
       return new Response(JSON.stringify({ choices: [{ finish_reason: "stop", message: { content: JSON.stringify({ word: selected, language: "en", phonetic: "/ˌserənˈdɪpəti/", translation: selected.includes(" ") ? "学习最好的方式，是保持好奇。" : "不期而遇的美好；意外发现的幸运", definitions: [{ partOfSpeech: "n. 名词", meaning: "偶然发现美好事物的机缘。" }], examples: [{ text: "Finding this little bookshop was pure serendipity.", translation: "偶然发现这家小书店，真是一份意外的幸运。" }], notes: "<img src=x onerror=alert('xss')> 是文本，不是网页代码。" }) } }] }), { status: 200 });
     }
     return original(url, init);
@@ -107,6 +112,21 @@ try {
     }
     throw new Error(`Panel did not show: ${text}`);
   }
+  async function panelBounds() {
+    return shadowCall('function(){const r=this.querySelector(".wl-panel").getBoundingClientRect();return {left:r.left,top:r.top,right:r.right,bottom:r.bottom};}');
+  }
+  async function dragPanel(left, top) {
+    const handle = await shadowCall('function(){const r=this.querySelector(".wl-topbar").getBoundingClientRect();return {x:r.left+50,y:r.top+r.height/2};}');
+    const bounds = await panelBounds();
+    await page.mouse.move(handle.x, handle.y); await page.mouse.down();
+    await page.mouse.move(left + handle.x - bounds.left, top + handle.y - bounds.top, { steps: 8 });
+    await page.mouse.up();
+    return panelBounds();
+  }
+  async function clickPanel(selector) {
+    const center = await shadowCall('function(s){const r=this.querySelector(s).getBoundingClientRect();return {x:r.left+r.width/2,y:r.top+r.height/2};}', selector);
+    await page.mouse.click(center.x, center.y);
+  }
   await page.locator("#demo-word").dblclick(); await waitPanel("不期而遇");
   assert.equal(await page.locator("[data-wordlens-root]").evaluate(el => el.shadowRoot), null);
   const bounds = await shadowCall('function(){const r=this.querySelector(".wl-panel").getBoundingClientRect();return {left:r.left,top:r.top,right:r.right,bottom:r.bottom};}');
@@ -119,7 +139,54 @@ try {
   await page.keyboard.press("Escape");
   assert.equal(await shadowCall('function(){return this.querySelector(".wl-panel").hidden;}'), true);
 
+  // Hold a fresh lookup while moving the loading card, then render a taller result.
+  await page.locator("#demo-word").evaluate(el => { el.textContent = "curiosity"; });
+  await worker.evaluate(() => { globalThis.__testHold = true; });
+  await page.locator("#demo-word").dblclick(); await waitPanel("正在理解");
+  const selectionBeforeDrag = await page.evaluate(() => getSelection().toString());
+  const requestsBeforeDrag = await worker.evaluate(() => globalThis.__testRequests.length);
+  const moved = await dragPanel(90, 24);
+  assert.equal(Math.round(moved.left), 90); assert.equal(Math.round(moved.top), 24);
+  await worker.evaluate(() => { if (!globalThis.__testRelease) throw new Error("Lookup was not held"); globalThis.__testRelease(); });
+  await waitPanel("不期而遇");
+  const rendered = await panelBounds();
+  assert.equal(rendered.left, moved.left); assert.equal(rendered.top, moved.top);
+  assert.equal(await page.evaluate(() => getSelection().toString()), selectionBeforeDrag);
+  assert.equal(await worker.evaluate(() => globalThis.__testRequests.length), requestsBeforeDrag);
+  // Reading/selecting the result does not move the card.
+  const textPoint = await shadowCall('function(){const r=this.querySelector(".wl-translation").getBoundingClientRect();return {x:r.left+15,y:r.top+r.height/2};}');
+  await page.mouse.move(textPoint.x, textPoint.y); await page.mouse.down();
+  await page.mouse.move(textPoint.x + 55, textPoint.y, { steps: 5 }); await page.mouse.up();
+  assert.deepEqual(await panelBounds(), rendered);
+  const upperLeft = await dragPanel(-500, -500);
+  assert.equal(upperLeft.left, 12); assert.equal(upperLeft.top, 12);
+  const lowerRight = await dragPanel(1600, 1400);
+  assert.ok(lowerRight.right <= 1088 && lowerRight.bottom <= 888);
+  await page.mouse.move(100, 100);
+  assert.deepEqual(await panelBounds(), lowerRight, "Releasing the pointer stops dragging");
+  await clickPanel("[aria-pressed]");
+  assert.equal(await shadowCall('function(){return this.querySelector("[aria-pressed]").getAttribute("aria-pressed");}'), "true");
+  assert.deepEqual(await panelBounds(), lowerRight, "The pin button does not start dragging");
+  await page.evaluate(() => scrollBy(0, 120));
+  assert.equal(await shadowCall('function(){return this.querySelector(".wl-panel").hidden;}'), false);
+  assert.deepEqual(await panelBounds(), lowerRight);
+  await page.setViewportSize({ width: 460, height: 480 });
+  await page.waitForFunction(() => innerWidth === 460);
+  // ResizeObserver also clamps the larger result to the smaller viewport.
+  await page.waitForTimeout(100);
+  const resized = await panelBounds();
+  assert.ok(resized.left >= 12 && resized.top >= 12 && resized.right <= 448 && resized.bottom <= 468);
+  await page.screenshot({ path: resolve(artifacts, "draggable-panel.png") });
+  await clickPanel('[aria-label="关闭 · Esc"]');
+  assert.equal(await shadowCall('function(){return this.querySelector(".wl-panel").hidden;}'), true);
+  await page.setViewportSize({ width: 1100, height: 900 });
+  await page.evaluate(() => scrollTo(0, 0));
+  await page.locator("#demo-word").evaluate(el => { el.textContent = "serendipity"; });
+  await page.waitForTimeout(550);
+  checks.push("真实鼠标拖动、加载后位置保留、正文选字、边缘限制、松手停止、固定/关闭按钮与窗口缩放");
+
   await select("#demo-sentence"); await waitPanel("学习最好的方式");
+  assert.notEqual((await panelBounds()).top, moved.top, "A new selection resets the manual position");
   await shadowCall('function(){this.querySelector("[aria-pressed]").click();}');
   await page.evaluate(() => scrollBy(0, 300));
   assert.equal(await shadowCall('function(){return this.querySelector(".wl-panel").hidden;}'), false);
