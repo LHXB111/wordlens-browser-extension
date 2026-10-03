@@ -127,6 +127,13 @@ try {
     const center = await shadowCall('function(s){const r=this.querySelector(s).getBoundingClientRect();return {x:r.left+r.width/2,y:r.top+r.height/2};}', selector);
     await page.mouse.click(center.x, center.y);
   }
+  async function resizePanel(direction, dx, dy) {
+    const center = await shadowCall('function(s){const r=this.querySelector(s).getBoundingClientRect();return {x:r.left+r.width/2,y:r.top+r.height/2};}', `.wl-resize-${direction}`);
+    await page.mouse.move(center.x, center.y); await page.mouse.down();
+    await page.mouse.move(center.x + dx, center.y + dy, { steps: 8 }); await page.mouse.up();
+    return panelBounds();
+  }
+  function panelSize(bounds) { return { width: bounds.right - bounds.left, height: bounds.bottom - bounds.top }; }
   await page.locator("#demo-word").dblclick(); await waitPanel("不期而遇");
   assert.equal(await page.locator("[data-wordlens-root]").evaluate(el => el.shadowRoot), null);
   const bounds = await shadowCall('function(){const r=this.querySelector(".wl-panel").getBoundingClientRect();return {left:r.left,top:r.top,right:r.right,bottom:r.bottom};}');
@@ -185,7 +192,56 @@ try {
   await page.waitForTimeout(550);
   checks.push("真实鼠标拖动、加载后位置保留、正文选字、边缘限制、松手停止、固定/关闭按钮与窗口缩放");
 
+  await page.locator("#demo-word").evaluate(el => { el.textContent = "beautiful"; });
+  await worker.evaluate(() => { globalThis.__testHold = true; });
+  await page.locator("#demo-word").dblclick(); await waitPanel("正在理解");
+  await dragPanel(60, 24);
+  const loadingSize = panelSize(await panelBounds());
+  const enlarged = await resizePanel("se", 520 - loadingSize.width, 400 - loadingSize.height);
+  assert.deepEqual(panelSize(enlarged), { width: 520, height: 400 });
+  const requestsBeforeResize = await worker.evaluate(() => globalThis.__testRequests.length);
+  await worker.evaluate(() => { if (!globalThis.__testRelease) throw new Error("Lookup was not held"); globalThis.__testRelease(); });
+  await waitPanel("不期而遇");
+  assert.deepEqual(await panelBounds(), enlarged, "Rendering keeps the chosen size and position");
+  const bodyBounds = await shadowCall('function(){const el=this.querySelector(".wl-body"),r=el.getBoundingClientRect();return {x:r.left+r.width/2,y:r.top+r.height/2,overflow:el.scrollHeight>el.clientHeight};}');
+  assert.equal(bodyBounds.overflow, true);
+  await page.mouse.move(bodyBounds.x, bodyBounds.y); await page.mouse.wheel(0, 1000);
+  await page.waitForTimeout(100);
+  assert.equal(await shadowCall('function(){const el=this.querySelector(".wl-body");return el.scrollTop>0 && el.scrollTop+el.clientHeight>=el.scrollHeight-1;}'), true);
+  assert.equal(await shadowCall('function(){return this.querySelector(".wl-panel").hidden;}'), false);
+  const movedAfterResize = await dragPanel(100, 100);
+  assert.deepEqual(panelSize(movedAfterResize), { width: 520, height: 400 });
+  const westResize = await resizePanel("w", -60, 0);
+  assert.equal(westResize.left, 40); assert.equal(westResize.right, movedAfterResize.right);
+  const northResize = await resizePanel("n", 0, -50);
+  assert.equal(northResize.top, 50); assert.equal(northResize.bottom, westResize.bottom);
+  const minimum = await resizePanel("se", -2000, -2000);
+  assert.deepEqual(panelSize(minimum), { width: 280, height: 180 });
+  assert.equal(minimum.left, northResize.left); assert.equal(minimum.top, northResize.top);
+  const maximum = await resizePanel("se", 2000, 2000);
+  assert.ok(maximum.right <= 1088 && maximum.bottom <= 888);
+  await page.mouse.move(100, 100);
+  assert.deepEqual(await panelBounds(), maximum, "Releasing the pointer stops resizing");
+  assert.equal(await worker.evaluate(() => globalThis.__testRequests.length), requestsBeforeResize);
+  await page.setViewportSize({ width: 320, height: 300 }); await page.waitForTimeout(100);
+  const compact = await panelBounds();
+  assert.ok(compact.left >= 12 && compact.top >= 12 && compact.right <= 308 && compact.bottom <= 288);
+  assert.equal(await shadowCall('function(){const el=this.querySelector(".wl-body");return el.scrollWidth<=el.clientWidth;}'), true);
+  const grip = await shadowCall('function(){const r=this.querySelector(".wl-resize-se").getBoundingClientRect();return {x:r.left+r.width/2,y:r.top+r.height/2};}');
+  await page.mouse.dblclick(grip.x, grip.y);
+  await page.setViewportSize({ width: 1100, height: 900 }); await page.waitForTimeout(100);
+  const restored = panelSize(await panelBounds());
+  assert.equal(restored.width, 360); assert.ok(restored.height > 180, "Double-click restores the natural height");
+  await dragPanel(60, 24);
+  await resizePanel("se", 430 - restored.width, 300 - restored.height);
+  await page.screenshot({ path: resolve(artifacts, "resizable-panel.png") });
+  await clickPanel('[aria-label="关闭 · Esc"]');
+  await page.locator("#demo-word").evaluate(el => { el.textContent = "serendipity"; });
+  await page.waitForTimeout(550);
+  checks.push("浮窗边缘与角落缩放、最小/最大尺寸、加载后保留大小、内容滚动、缩放后移动与双击恢复默认");
+
   await select("#demo-sentence"); await waitPanel("学习最好的方式");
+  assert.deepEqual(panelSize(await panelBounds()), { width: 430, height: 300 }, "The current page remembers the chosen size for new lookups");
   assert.notEqual((await panelBounds()).top, moved.top, "A new selection resets the manual position");
   await shadowCall('function(){this.querySelector("[aria-pressed]").click();}');
   await page.evaluate(() => scrollBy(0, 300));

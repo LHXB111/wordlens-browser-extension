@@ -2,7 +2,7 @@
   "manifest_version": 3,
   "name": "拾词 · WordLens",
   "description": "选中文字，即刻查看释义、音标、词性和例句。支持自定义 AI API 与生词收藏。",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "minimum_chrome_version": "114",
   "permissions": ["storage", "contextMenus"],
   "host_permissions": ["https://api.dictionaryapi.dev/*"],
