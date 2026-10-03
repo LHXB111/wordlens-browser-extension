@@ -1,0 +1,7 @@
+node_modules/
+artifacts/
+*.zip
+*.log
+WordLens-v*/
+.env
+.env.*

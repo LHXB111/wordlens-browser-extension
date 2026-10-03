@@ -1,0 +1,28 @@
+{
+  "manifest_version": 3,
+  "name": "拾词 · WordLens",
+  "description": "选中文字，即刻查看释义、音标、词性和例句。支持自定义 AI API 与生词收藏。",
+  "version": "1.0.0",
+  "minimum_chrome_version": "114",
+  "permissions": ["storage", "contextMenus"],
+  "host_permissions": ["https://api.dictionaryapi.dev/*"],
+  "optional_host_permissions": ["https://*/*", "http://localhost/*", "http://127.0.0.1/*"],
+  "background": { "service_worker": "background.js", "type": "module" },
+  "action": {
+    "default_title": "拾词 · 选中，理解，记住",
+    "default_popup": "ui/popup.html",
+    "default_icon": { "16": "icons/16.png", "32": "icons/32.png", "48": "icons/48.png", "128": "icons/128.png" }
+  },
+  "icons": { "16": "icons/16.png", "32": "icons/32.png", "48": "icons/48.png", "128": "icons/128.png" },
+  "options_ui": { "page": "ui/options.html", "open_in_tab": true },
+  "content_scripts": [{
+    "matches": ["http://*/*", "https://*/*"],
+    "js": ["lib/core.js", "lib/view.js", "content.js"],
+    "run_at": "document_idle",
+    "all_frames": true
+  }],
+  "commands": {
+    "lookup-selection": { "suggested_key": { "default": "Alt+T" }, "description": "解释当前选中的文字" }
+  },
+  "content_security_policy": { "extension_pages": "script-src 'self'; object-src 'self'" }
+}

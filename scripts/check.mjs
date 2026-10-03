@@ -1,0 +1,12 @@
+import { readFile, access } from "node:fs/promises";
+import { execFileSync } from "node:child_process";
+import { fileURLToPath } from "node:url";
+import { resolve } from "node:path";
+const root = fileURLToPath(new URL("..", import.meta.url));
+const manifest = JSON.parse(await readFile(resolve(root, "manifest.json"), "utf8"));
+const scripts = ["background.js", "lib/core.js", "lib/view.js", "content.js", "ui/api.js", "ui/popup.js", "ui/options.js"];
+for (const file of scripts) execFileSync(process.execPath, ["--check", resolve(root, file)], { stdio: "inherit" });
+const files = [manifest.background.service_worker, manifest.action.default_popup, manifest.options_ui.page, ...Object.values(manifest.icons), ...manifest.content_scripts.flatMap(x => x.js)];
+for (const file of files) await access(resolve(root, file));
+if (manifest.manifest_version !== 3) throw new Error("Expected Manifest V3");
+console.log("JavaScript syntax and all manifest resources verified.");

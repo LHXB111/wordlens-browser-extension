@@ -1,0 +1,17 @@
+<!doctype html>
+<html lang="zh-CN">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>拾词 · WordLens</title><link rel="stylesheet" href="shared.css"><link rel="stylesheet" href="popup.css"></head>
+<body>
+  <header class="popup-header"><div class="brand"><span class="brand-mark" aria-hidden="true"></span><div><div class="brand-name">拾词</div><div class="brand-en">WORDLENS</div></div></div><label class="toggle" title="启用划词解释"><input id="enabled" type="checkbox" aria-label="启用划词解释"><span class="toggle-track"></span></label></header>
+  <main>
+    <div class="intro"><div class="eyebrow">A LITTLE CURIOSITY, EVERY DAY</div><h1>每一个词，都值得理解。</h1><p>选中文字，释义就在手边。</p></div>
+    <div class="connection"><span id="mode-badge" class="badge">加载中</span><button id="open-settings" class="ghost">API 设置 <span aria-hidden="true">↗</span></button></div>
+    <form id="lookup-form"><label for="query" class="field-label">也可以在这里查一查</label><div class="query-box"><textarea id="query" rows="2" placeholder="输入单词、短语或句子…" maxlength="4000" required></textarea><button id="lookup" class="lookup-button" type="submit" aria-label="查询">↗</button></div></form>
+    <div id="result" class="wordlens-result wl-surface" hidden aria-live="polite"></div>
+    <div id="status" class="status" hidden role="status"></div>
+    <div class="reading-tip"><span class="tip-symbol" aria-hidden="true">✳</span><div><strong id="trigger-tip">选中，即刻解释</strong><p id="mode-tip">英文词典无需 API Key。中文详解请接入 AI。</p></div></div>
+    <button id="wordbook" class="wordbook-link"><span>我的生词本 <span id="word-count">0</span></span><span aria-hidden="true">→</span></button>
+  </main>
+  <footer><span>选中 · 理解 · 记住</span><span><kbd>Alt</kbd> + <kbd>T</kbd></span></footer>
+  <script src="popup.js" type="module"></script>
+</body></html>
